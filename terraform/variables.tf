@@ -14,8 +14,8 @@ data "aws_secretsmanager_secret_version" "fastly_api_key" {
 # WAF
 # -----------------
 
-resource "aws_wafv2_web_acl" "dvna_waf" {
-  name  = "dvna-acl"
+resource "aws_wafv2_web_acl" "app_waf" {
+  name  = "app-acl"
   scope = "REGIONAL"
 
   default_action {
@@ -135,7 +135,7 @@ resource "aws_wafv2_web_acl" "dvna_waf" {
 
   visibility_config {
     cloudwatch_metrics_enabled = true
-    metric_name                = "dvna-acl"
+    metric_name                = "app-acl"
     sampled_requests_enabled   = true
   }
 }
