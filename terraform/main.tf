@@ -23,80 +23,81 @@ provider "aws" {
 # NETWORKING
 # -----------------
 
-resource "aws_vpc" "dvna_vpc" {
+resource "aws_vpc" "app_vpc" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
 }
 
-resource "aws_subnet" "dvna_public_subnet" {
+resource "aws_subnet" "app_public_subnet" {
   count             = 2
   cidr_block        = element(["10.0.0.0/24", "10.0.1.0/24"], count.index)
-  vpc_id            = aws_vpc.dvna_vpc.id
+  vpc_id            = aws_vpc.app_vpc.id
   availability_zone = data.aws_availability_zones.available_zones.names[count.index]
 }
 
-resource "aws_subnet" "dvna_private_subnet" {
+resource "aws_subnet" "app_private_subnet" {
   count             = 2
   cidr_block        = element(["10.0.2.0/24", "10.0.3.0/24"], count.index)
   availability_zone = data.aws_availability_zones.available_zones.names[count.index]
-  vpc_id            = aws_vpc.dvna_vpc.id
+  vpc_id            = aws_vpc.app_vpc.id
 }
 
-resource "aws_internet_gateway" "dvna_igw" {
-  vpc_id = aws_vpc.dvna_vpc.id
+resource "aws_internet_gateway" "app_igw" {
+  vpc_id = aws_vpc.app_vpc.id
 }
 
-resource "aws_eip" "dvna_ips" {
+resource "aws_eip" "app_ips" {
   count      = 2
-  depends_on = [aws_internet_gateway.dvna_igw]
+  depends_on = [aws_internet_gateway.app_igw]
 }
 
-resource "aws_nat_gateway" "dvna_nat" {
+resource "aws_nat_gateway" "app_nat" {
   count         = 2
-  subnet_id     = element(aws_subnet.dvna_public_subnet.*.id, count.index)
-  allocation_id = element(aws_eip.dvna_ips.*.id, count.index)
+  subnet_id     = element(aws_subnet.app_public_subnet.*.id, count.index)
+  allocation_id = element(aws_eip.app_ips.*.id, count.index)
 }
 
-resource "aws_route_table" "dvna_private_route" {
+resource "aws_route_table" "app_private_route" {
   count  = 2
-  vpc_id = aws_vpc.dvna_vpc.id
+  vpc_id = aws_vpc.app_vpc.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = element(aws_nat_gateway.dvna_nat.*.id, count.index)
+    nat_gateway_id = element(aws_nat_gateway.app_nat.*.id, count.index)
   }
 }
 
-resource "aws_route_table" "dvna_public_route" {
-  vpc_id = aws_vpc.dvna_vpc.id
+resource "aws_route_table" "app_public_route" {
+  vpc_id = aws_vpc.app_vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.dvna_igw.id
+    gateway_id = aws_internet_gateway.app_igw.id
   }
 }
 
-resource "aws_route_table_association" "dvna_private_table_association" {
+resource "aws_route_table_association" "app_private_table_association" {
   count          = 2
-  subnet_id      = element(aws_subnet.dvna_private_subnet.*.id, count.index)
-  route_table_id = element(aws_route_table.dvna_private_route.*.id, count.index)
+  subnet_id      = element(aws_subnet.app_private_subnet.*.id, count.index)
+  route_table_id = element(aws_route_table.app_private_route.*.id, count.index)
 }
 
-resource "aws_route_table_association" "dvna_public_table_association" {
+resource "aws_route_table_association" "app_public_table_association" {
   count          = 2
-  subnet_id      = element(aws_subnet.dvna_public_subnet.*.id, count.index)
-  route_table_id = aws_route_table.dvna_public_route.id
+  subnet_id      = element(aws_subnet.app_public_subnet.*.id, count.index)
+  route_table_id = aws_route_table.app_public_route.id
 }
 
 # -----------------
 # LOAD BALANCER
 # -----------------
 
-/*resource "aws_security_group" "dvna_https_sg" {
-  name        = "dvna-https-sg"
+# Uncomment and use when https is not avaiable by CDN
+/*resource "aws_security_group" "app_https_sg" {
+  name        = "app-https-sg"
   description = "Security group for https traffic."
-  vpc_id      = aws_vpc.dvna_vpc.id
+  vpc_id      = aws_vpc.app_vpc.id
 
   ingress {
     cidr_blocks = ["0.0.0.0/0"]
@@ -115,10 +116,10 @@ resource "aws_route_table_association" "dvna_public_table_association" {
   }
 }*/
 
-resource "aws_security_group" "dvna_http_sg" {
-  name        = "dvna-http-sg"
+resource "aws_security_group" "app_http_sg" {
+  name        = "app-http-sg"
   description = "Security group for http traffic."
-  vpc_id      = aws_vpc.dvna_vpc.id
+  vpc_id      = aws_vpc.app_vpc.id
 
   ingress {
     cidr_blocks = ["0.0.0.0/0"]
@@ -141,73 +142,73 @@ resource "aws_security_group" "dvna_http_sg" {
   }
 }
 
-resource "aws_lb" "dvna_lb" {
-  name                       = "dvna-lb"
+resource "aws_lb" "app_lb" {
+  name                       = "app-lb"
   drop_invalid_header_fields = true
-  subnets                    = aws_subnet.dvna_public_subnet.*.id
-  security_groups            = [aws_security_group.dvna_http_sg.id] //, aws_security_group.dvna_https_sg.id]
+  subnets                    = aws_subnet.app_public_subnet.*.id
+  security_groups            = [aws_security_group.app_http_sg.id] //, aws_security_group.app_https_sg.id]
   # enable_waf_fail_open = false
 }
 
-resource "aws_lb_target_group" "dvna_target_group" {
-  name        = "dvna-target-group"
+resource "aws_lb_target_group" "app_target_group" {
+  name        = "app-target-group"
   port        = 80
   protocol    = "HTTP"
   target_type = "ip"
-  vpc_id      = aws_vpc.dvna_vpc.id
+  vpc_id      = aws_vpc.app_vpc.id
 
   health_check {
     matcher = "200,302"
   }
 }
 
-resource "aws_lb_listener" "dvna_listener_http" {
-  load_balancer_arn = aws_lb.dvna_lb.arn
+resource "aws_lb_listener" "app_listener_http" {
+  load_balancer_arn = aws_lb.app_lb.arn
   port              = "80"
   protocol          = "HTTP"
 
   default_action {
-    target_group_arn = aws_lb_target_group.dvna_target_group.arn
+    target_group_arn = aws_lb_target_group.app_target_group.arn
     type             = "forward"
   }
 }
 
-resource "aws_cloudwatch_log_group" "dvna_logs" {
-  name              = "aws-waf-logs-dvna"
+resource "aws_cloudwatch_log_group" "app_logs" {
+  name              = "aws-waf-logs-app"
   retention_in_days = 365
 }
 
 resource "aws_wafv2_web_acl_association" "alb-waf" {
-  resource_arn = aws_lb.dvna_lb.arn
-  web_acl_arn  = aws_wafv2_web_acl.dvna_waf.arn
+  resource_arn = aws_lb.app_lb.arn
+  web_acl_arn  = aws_wafv2_web_acl.app_waf.arn
 }
 
 resource "aws_wafv2_web_acl_logging_configuration" "waf-logs" {
-  log_destination_configs = [aws_cloudwatch_log_group.dvna_logs.arn]
-  resource_arn            = aws_wafv2_web_acl.dvna_waf.arn
+  log_destination_configs = [aws_cloudwatch_log_group.app_logs.arn]
+  resource_arn            = aws_wafv2_web_acl.app_waf.arn
 }
 
-/*data "aws_acm_certificate" "dvna_cert" {
-  domain      = "viceops.net"
+/*data "aws_acm_certificate" "app_cert" {
+  domain      = "example.com"
   types       = ["AMAZON_ISSUED"]
   most_recent = true
 }
 
-resource "aws_lb_listener" "dvna_listener_https" {
-  load_balancer_arn = aws_lb.dvna_lb.arn
+resource "aws_lb_listener" "app_listener_https" {
+  load_balancer_arn = aws_lb.app_lb.arn
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
-  certificate_arn   = data.aws_acm_certificate.dvna_cert.arn
+  certificate_arn   = data.aws_acm_certificate.app_cert.arn
 
   default_action {
-    target_group_arn = aws_lb_target_group.dvna_target_group.arn
+    target_group_arn = aws_lb_target_group.app_target_group.arn
     type             = "forward"
   }
 }
 
-resource "aws_lb_listener" "dvna_listener_http" {
-  load_balancer_arn = aws_lb.dvna_lb.arn
+resource "aws_lb_listener" "app_listener_http" {
+  load_balancer_arn = aws_lb.app_lb.arn
   port              = "80"
   protocol          = "HTTP"
 
@@ -226,17 +227,17 @@ resource "aws_lb_listener" "dvna_listener_http" {
 # ECS
 # -----------------
 
-resource "aws_security_group" "dvna_ecs_sg" {
-  name        = "dvna-ecs-security-group"
+resource "aws_security_group" "app_ecs_sg" {
+  name        = "app-ecs-security-group"
   description = "Security group for ecs service."
-  vpc_id      = aws_vpc.dvna_vpc.id
+  vpc_id      = aws_vpc.app_vpc.id
 
   ingress {
     description     = "Allow public web traffic to app"
     from_port       = 9090
     protocol        = "tcp"
     to_port         = 9090
-    security_groups = [aws_security_group.dvna_http_sg.id] //, aws_security_group.dvna_https_sg.id]
+    security_groups = [aws_security_group.app_http_sg.id] //, aws_security_group.app_https_sg.id]
   }
 
   egress {
@@ -252,16 +253,16 @@ resource "aws_security_group" "dvna_ecs_sg" {
   }
 }
 
-resource "aws_ecs_task_definition" "dvna" {
-  family                   = "dvna_app"
+resource "aws_ecs_task_definition" "app" {
+  family                   = "app_app"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = 2048
   memory                   = 4096
   container_definitions = jsonencode([
     {
-      name         = "dvna"
-      image        = "appsecco/dvna:sqlite"
+      name         = "app"
+      image        = "some/image"
       cpu          = 2048
       memory       = 4096
       network_mode = "awsvpc"
@@ -275,29 +276,29 @@ resource "aws_ecs_task_definition" "dvna" {
   ])
 }
 
-resource "aws_ecs_cluster" "dvna_cluster" {
-  name = "dvna_cluster"
+resource "aws_ecs_cluster" "app_cluster" {
+  name = "app_cluster"
 }
 
-resource "aws_ecs_service" "dvna" {
-  name            = "dvna"
-  cluster         = aws_ecs_cluster.dvna_cluster.id
-  task_definition = aws_ecs_task_definition.dvna.arn
+resource "aws_ecs_service" "app" {
+  name            = "app"
+  cluster         = aws_ecs_cluster.app_cluster.id
+  task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 1
   launch_type     = "FARGATE"
 
   network_configuration {
-    security_groups = [aws_security_group.dvna_ecs_sg.id]
-    subnets         = aws_subnet.dvna_private_subnet.*.id
+    security_groups = [aws_security_group.app_ecs_sg.id]
+    subnets         = aws_subnet.app_private_subnet.*.id
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.dvna_target_group.arn
-    container_name   = "dvna"
+    target_group_arn = aws_lb_target_group.app_target_group.arn
+    container_name   = "app"
     container_port   = 9090
   }
 
-  depends_on = [aws_lb_listener.dvna_listener_http] //, aws_lb_listener.dvna_listener_https]
+  depends_on = [aws_lb_listener.app_listener_http] //, aws_lb_listener.app_listener_https]
 }
 
 # -----------------
@@ -308,18 +309,18 @@ provider "fastly" {
   api_key = jsondecode(data.aws_secretsmanager_secret_version.fastly_api_key.secret_string)["api_key"]
 }
 
-resource "fastly_service_vcl" "dvna" {
-  name = "dvna"
+resource "fastly_service_vcl" "app" {
+  name = "app"
 
   domain {
-    name = "dvna.viceops.net"
+    name = "example.com"
   }
 
   backend {
-    address           = aws_lb.dvna_lb.dns_name
-    name              = "dvna"
+    address           = aws_lb.app_lb.dns_name
+    name              = "app"
     port              = 80
-    ssl_cert_hostname = "dvna.viceops.net"
+    ssl_cert_hostname = "app.example.com"
   }
 
   force_destroy = true
@@ -337,26 +338,26 @@ provider "sigsci" {
   fastly_key = jsondecode(data.aws_secretsmanager_secret_version.fastly_api_key.secret_string)["api_key"]
 }
 
-resource "sigsci_site" "dvna" {
-  short_name             = "dvna"
-  display_name           = "dvna"
+resource "sigsci_site" "app" {
+  short_name             = "app"
+  display_name           = "app"
   block_duration_seconds = 1000
   agent_anon_mode        = ""
   agent_level            = "log"
 }
 
-resource "sigsci_edge_deployment" "dvna_deployment" {
-  site_short_name = sigsci_site.dvna.short_name
+resource "sigsci_edge_deployment" "app_deployment" {
+  site_short_name = sigsci_site.app.short_name
 }
 
-resource "sigsci_edge_deployment_service" "dvna-edge-service" {
-  site_short_name  = sigsci_site.dvna.short_name
-  fastly_sid       = fastly_service_vcl.dvna.id
+resource "sigsci_edge_deployment_service" "app-edge-service" {
+  site_short_name  = sigsci_site.app.short_name
+  fastly_sid       = fastly_service_vcl.app.id
   activate_version = true
   percent_enabled  = 100
 
   depends_on = [
-    sigsci_edge_deployment.dvna_deployment
+    sigsci_edge_deployment.app_deployment
   ]
 }
 
@@ -366,5 +367,5 @@ resource "sigsci_edge_deployment_service" "dvna-edge-service" {
 
 output "load_balancer_ip" {
   description = "Outputs dns name of load balancer."
-  value       = aws_lb.dvna_lb.dns_name
+  value       = aws_lb.app_lb.dns_name
 }
