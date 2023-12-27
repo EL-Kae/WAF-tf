@@ -1,2 +1,2 @@
 # WAF-tf
-Terraform script to setup AWS WAF and Signal Sciences
+Terraform script showcasing how to setup AWS WAF and Signal Sciences on a fargate cluster
